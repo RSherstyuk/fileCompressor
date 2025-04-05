@@ -14,8 +14,8 @@ int main(int argc, char *argv[]) {
     fs::path input_file = argv[1];
     fs::path output_dir = argv[2];
 
-    FileProc proc(input_file, output_dir);
-    proc.compress_file();
+    // FileProcessor proc(input_file, output_dir);
+    // proc.compress_file();
 
     return 0;
 }
