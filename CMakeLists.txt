@@ -10,6 +10,7 @@ add_executable(fileProcTest
     src/main.cpp
     src/file_proc.cpp
     src/file_proc.hpp
+    src/task_queue.hpp
 )
 
 target_include_directories(fileProcTest PRIVATE src)
