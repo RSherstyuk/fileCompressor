@@ -1,14 +1,13 @@
 #pragma once
-#include <queue>
+#include <condition_variable>
 #include <filesystem>
 #include <mutex>
-#include <condition_variable>
-
+#include <queue>
 
 class TaskQueue {
 public:
-  TaskQueue();
-  ~TaskQueue();
+  void push(const std::filesystem::path &file_path);
+  bool try_pop(std::filesystem::path &file_path);
   void done();
   bool is_done() const;
 
