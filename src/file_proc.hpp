@@ -1,13 +1,24 @@
 #pragma once
+#include "task_queue.hpp"
+#include <atomic>
 #include <filesystem>
+#include <thread>
+#include <vector>
 
-class FileProc {
+class FileProcessor {
 public:
-  FileProc(const std::filesystem::path& input_file,const std::filesystem::path& output_file);
-  ~FileProc();
-  void compress_file();
+  FileProcessor(TaskQueue &queue, const std::filesystem::path &output_dir);
+  ~FileProcessor();
+
+  void start(size_t thread_count);
+  void stop();
+  void wait();
 
 private:
-  std::filesystem::path output_file_;
-  std::filesystem::path input_file_;
+  void worker_thread();
+
+  TaskQueue &queue_;
+  std::filesystem::path output_dir_;
+  std::vector<std::thread> threads_;
+  std::atomic<bool> stop_flag_{false};
 };

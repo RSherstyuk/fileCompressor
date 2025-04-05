@@ -1,59 +1,74 @@
 #include "file_proc.hpp"
-#include "zlib.h"
-#include <cstring>
 #include <fstream>
 #include <iostream>
-#include <vector>
+#include <zlib.h>
 
-namespace fs = std::filesystem;
+FileProcessor::FileProcessor(TaskQueue &queue,
+                             const std::filesystem::path &output_dir)
+    : queue_(queue), output_dir_(output_dir) {}
 
-FileProc::FileProc(const std::filesystem::path &input_file,
-                   const std::filesystem::path &output_file)
-    : output_file_(output_file), input_file_(input_file) {}
+FileProcessor::~FileProcessor() {
+  stop();
+  wait();
+}
 
-FileProc::~FileProc() {};
+void FileProcessor::start(size_t thread_count) {
+  stop_flag_ = false;
+  for (size_t i = 0; i < thread_count; ++i) {
+    threads_.emplace_back(&FileProcessor::worker_thread, this);
+  }
+}
 
-void FileProc::compress_file() {
-  try {
-    if (!fs::exists(input_file_)) {
-      throw std::runtime_error("Input file does not exist");
+void FileProcessor::stop() {
+  stop_flag_ = true;
+  queue_.done();
+}
+
+void FileProcessor::wait() {
+  for (auto &thread : threads_) {
+    if (thread.joinable()) {
+      thread.join();
     }
+  }
+  threads_.clear();
+}
 
-    if (!fs::exists(output_file_)) {
-      fs::create_directories(output_file_);
+void FileProcessor::worker_thread() {
+  std::filesystem::path file_path;
+
+  while (!stop_flag_ && queue_.try_pop(file_path)) {
+    try {
+      std::ifstream input(file_path, std::ios::binary);
+      if (!input)
+        continue;
+
+      std::vector<char> input_data((std::istreambuf_iterator<char>(input)),
+                                   std::istreambuf_iterator<char>());
+
+      uLongf compressed_size = compressBound(input_data.size());
+      std::vector<Bytef> compressed_data(compressed_size);
+
+      if (compress(compressed_data.data(), &compressed_size,
+                   reinterpret_cast<Bytef *>(input_data.data()),
+                   input_data.size()) != Z_OK) {
+        std::cerr << "Compression failed for: " << file_path << std::endl;
+        continue;
+      }
+
+      std::filesystem::path output_path =
+          output_dir_ / (file_path.filename().string() + ".z");
+      std::ofstream output(output_path, std::ios::binary);
+      if (!output)
+        continue;
+
+      output.write(reinterpret_cast<char *>(compressed_data.data()),
+                   compressed_size);
+      std::cout << "Compressed: " << file_path << " -> " << output_path
+                << std::endl;
+
+    } catch (const std::exception &e) {
+      std::cerr << "Error processing " << file_path << ": " << e.what()
+                << std::endl;
     }
-
-    std::ifstream input(input_file_, std::ios::binary);
-    if (!input) {
-      throw std::runtime_error("Failed to open input file");
-    }
-
-    std::vector<char> input_data((std::istreambuf_iterator<char>(input)),
-                                 std::istreambuf_iterator<char>());
-
-    uLongf compressed_size = compressBound(input_data.size());
-    std::vector<Bytef> compressed_data(compressed_size);
-
-    if (compress(compressed_data.data(), &compressed_size,
-                 reinterpret_cast<Bytef *>(input_data.data()),
-                 input_data.size()) != Z_OK) {
-      throw std::runtime_error("Compression failed");
-    }
-
-    fs::path output_path = output_file_ / (input_file_.stem().string() + ".z");
-
-    std::ofstream output(output_path, std::ios::binary);
-    if (!output) {
-      throw std::runtime_error("Failed to create output file");
-    }
-
-    output.write(reinterpret_cast<char *>(compressed_data.data()),
-                 compressed_size);
-
-    std::cout << "Successfully compressed: " << input_file_ << " -> "
-              << output_path << std::endl;
-
-  } catch (const std::exception &e) {
-    std::cerr << "Error: " << e.what() << std::endl;
   }
 }
